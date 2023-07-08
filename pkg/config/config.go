@@ -7,11 +7,11 @@ import (
 	"os"
 )
 
-type ConfigReader struct {
+type configReader struct {
 	config map[string]interface{}
 }
 
-func NewConfigReader(path string) (*ConfigReader, error) {
+func NewConfigReader(path string) (*configReader, error) {
 	jsonConfig, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func NewConfigReader(path string) (*ConfigReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	var reader ConfigReader
+	var reader configReader
 	err = json.Unmarshal(byteConfig, &reader.config)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func NewConfigReader(path string) (*ConfigReader, error) {
 	}
 }
 
-func (configReader *ConfigReader) GetString(name string) (string, error) {
+func (configReader *configReader) GetString(name string) (string, error) {
 	if value, ok := configReader.config[name]; ok {
 		if stringValue, ok := value.(string); ok {
 			return stringValue, nil

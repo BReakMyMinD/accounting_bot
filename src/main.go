@@ -11,16 +11,15 @@ func main() {
 
 	infoLog.Println("starting bot...")
 
-	configReader, err := config.NewConfigReader("./../config.json")
+	configReader, err := config.NewConfigReader("../config.json") //for debug, by default "config.json"
 	if err != nil{
 		errorLog.Fatalln(err)
 	}
 
-	botToken, err := configReader.GetString("token")
+	botToken, err := configReader.GetString("bot_token")
 	if err != nil{
 		errorLog.Fatalln(err)
 	}
 
-	infoLog.Printf("token %q", botToken)
 	
 }
