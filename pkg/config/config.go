@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 )
 
-type configReader struct {
+type ConfigReader struct {
 	config map[string]interface{}
 }
 
-func NewConfigReader(path string) (*configReader, error) {
+func NewConfigReader(path string) (*ConfigReader, error) {
 	jsonConfig, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -21,7 +22,7 @@ func NewConfigReader(path string) (*configReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	var reader configReader
+	var reader ConfigReader
 	err = json.Unmarshal(byteConfig, &reader.config)
 	if err != nil {
 		return nil, err
@@ -30,14 +31,17 @@ func NewConfigReader(path string) (*configReader, error) {
 	}
 }
 
-func (configReader *configReader) GetString(name string) (string, error) {
-	if value, ok := configReader.config[name]; ok {
-		if stringValue, ok := value.(string); ok {
-			return stringValue, nil
+func (configReader *ConfigReader) GetParameter(name string, valuePtr interface{}) error {
+	if configValue, ok := configReader.config[name]; ok && configValue != nil {
+		configValuePtrType := reflect.PointerTo(reflect.TypeOf(configValue))
+		valuePtrType := reflect.TypeOf(valuePtr)
+		if configValuePtrType != valuePtrType {
+			return fmt.Errorf("pointer to parameter %q has type %s, passed %T", name, configValuePtrType.String(), valuePtr)
 		} else {
-			return "", fmt.Errorf("parameter %q is not a string", name)
+			reflect.ValueOf(valuePtr).Elem().Set(reflect.ValueOf(configValue))
+			return nil
 		}
 	} else {
-		return "", fmt.Errorf("parameter %q is not found", name)
+		return fmt.Errorf("parameter %q is not found", name)
 	}
 }

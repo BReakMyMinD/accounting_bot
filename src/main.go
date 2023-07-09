@@ -1,9 +1,10 @@
 package main
 
 import( "config" 
+		"tgbot"
 	  	"log"
 		"os"
-	  )
+)
 
 func main() {
 	infoLog := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime)
@@ -16,10 +17,13 @@ func main() {
 		errorLog.Fatalln(err)
 	}
 
-	botToken, err := configReader.GetString("bot_token")
-	if err != nil{
+	
+	bot, err := tgbot.NewBot(configReader)
+	if err != nil {
 		errorLog.Fatalln(err)
 	}
-
-	
+	go bot.StartGettingUpdates(errorLog)
+	for update := range bot.UpdatesChan {
+		infoLog.Println(update.UpdateID)
+	}
 }
