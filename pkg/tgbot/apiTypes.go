@@ -1,5 +1,14 @@
 package tgbot
 
+import "encoding/json"
+
+type ApiResponse struct {
+	Ok bool `json:"ok"`
+	Result json.RawMessage `json:"result,omitempty"`
+	ErrorCode int `json:"error_code,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 type Update struct {
 	UpdateID int `json:"update_id"`
 	Message *Message `json:"message,omitempty"`

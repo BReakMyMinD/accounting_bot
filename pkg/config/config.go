@@ -8,11 +8,11 @@ import (
 	"reflect"
 )
 
-type ConfigReader struct {
+type configReader struct {
 	config map[string]interface{}
 }
 
-func NewConfigReader(path string) (*ConfigReader, error) {
+func NewConfigReader(path string) (*configReader, error) {
 	jsonConfig, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func NewConfigReader(path string) (*ConfigReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	var reader ConfigReader
+	var reader configReader
 	err = json.Unmarshal(byteConfig, &reader.config)
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func NewConfigReader(path string) (*ConfigReader, error) {
 	}
 }
 
-func (configReader *ConfigReader) GetParameter(name string, valuePtr interface{}) error {
+func (configReader *configReader) GetParameter(name string, valuePtr interface{}) error {
 	if configValue, ok := configReader.config[name]; ok && configValue != nil {
 		configValuePtrType := reflect.PointerTo(reflect.TypeOf(configValue))
 		valuePtrType := reflect.TypeOf(valuePtr)

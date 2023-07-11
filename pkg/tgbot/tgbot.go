@@ -2,76 +2,67 @@ package tgbot
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
-	//"net/http"
-	"encoding/json"
 	"bytes"
-	"log"
+	"encoding/json"
 	"io"
+	"log"
 	"time"
-	"config"
 )
+
+const apiMethodTemplate string = "https://api.telegram.org/bot<TOKEN>/<METHOD>"
+const apiFileTemplate string = "https://api.telegram.org/file/bot<TOKEN>/<PATH>"
+const updatesLimit int = 100
 
 type tgbot struct {
 	token string
-	apiTemplate string
 	updatesOffset int
 	timeout int
 	UpdatesChan chan Update
 }
 
-func NewBot(configReader *config.ConfigReader) (*tgbot, error) {
-	var token, apiTemplate string
-	var timeout float64
-
-	err := configReader.GetParameter("bot_token", &token)
-	if err != nil {
-		return nil, err
-	}
-	err = configReader.GetParameter("api_template", &apiTemplate) 
-	if err != nil {
-		return nil, err
-	}
-	err = configReader.GetParameter("long_polling_timeout", &timeout) //json number interprets as float64!
-	if err != nil {
-		return nil, err
-	}
-
+func NewBot(token string, timeout int) (*tgbot, error) {
 	bot := tgbot{
 		token, 
-		apiTemplate,
 		0,
-		int(timeout),
-		make(chan Update, 100),
+		timeout,
+		make(chan Update, updatesLimit),
 	}
-	_, err = bot.makeApiRequest("GET", "getMe", "", nil)
+	_, err := bot.makeApiRequest(bot.prepareApiUrl("getMe", ""),
+								 "GET",
+								 "",
+								 nil)
 	if err != nil {
 		return nil, fmt.Errorf("bot start failed: %s", err.Error())
 	} 
 	return &bot, nil
 }
 
-
 func (bot *tgbot) StartGettingUpdates(log *log.Logger) {
 	for {
 		requestBody := RequestUpdates{
 			bot.updatesOffset,
-			100,
-			30,
+			updatesLimit,
+			bot.timeout,
 			[]string{"message", "callback_query"},
 		}
 		requestBodyJson, err := json.Marshal(requestBody)
 		if err != nil {
-			log.Fatalln(err)
+			log.Println(err)
+			continue
 		}
-		responseBody, err := bot.makeApiRequest("POST", "getUpdates", "application/json", bytes.NewReader(requestBodyJson))
+		apiResponse, err := bot.makeApiRequest(bot.prepareApiUrl("getUpdates", ""),
+												    "POST",
+												    "application/json", 
+													requestBodyJson)
 		if err != nil {
 			log.Println(err)
 			time.Sleep(time.Second * 3)
 			continue
 		}
 		var updates []Update
-		err = json.Unmarshal(responseBody, &updates)
+		err = json.Unmarshal(apiResponse.Result, &updates)
 		if err != nil {
 			log.Println(err)
 			continue
@@ -85,9 +76,42 @@ func (bot *tgbot) StartGettingUpdates(log *log.Logger) {
 	}
 }
 
-func (bot *tgbot) makeApiRequest(httpMethod string, apiMethod string, contentType string, body io.Reader) ([]byte, error) {
-	url := strings.Replace(bot.apiTemplate, "<TOKEN>", bot.token, 1)
-	url = strings.Replace(url, "<METHOD>", apiMethod, 1)
-	//todo
-	return []byte{}, nil
+func (bot *tgbot) makeApiRequest(url string, httpMethod string, contentType string, body []byte) (*ApiResponse, error) {
+	request, err := http.NewRequest(httpMethod, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", contentType)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("request failed with http status code %d", response.StatusCode)
+	}
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	var apiResponse ApiResponse
+	err = json.Unmarshal(responseBody, &apiResponse)
+	if err != nil {
+		return nil, err
+	}
+	if !apiResponse.Ok {
+		return nil, fmt.Errorf("request failed with telegram error code %d", apiResponse.ErrorCode)
+	}
+	return &apiResponse, nil
+}
+
+func (bot *tgbot) prepareApiUrl(apiMethod string, filePath string) string {
+	var url string
+	if apiMethod != "" {
+		url = strings.Replace(apiMethodTemplate, "<METHOD>", apiMethod, 1)
+	} else {
+		url = strings.Replace(apiFileTemplate, "<PATH>", filePath, 1)
+	}
+	url = strings.Replace(url, "<TOKEN>", bot.token, 1)
+	return url
 }
