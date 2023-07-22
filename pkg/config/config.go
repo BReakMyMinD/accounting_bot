@@ -36,7 +36,10 @@ func (configReader *configReader) GetParameter(name string, valuePtr interface{}
 		configValuePtrType := reflect.PointerTo(reflect.TypeOf(configValue))
 		valuePtrType := reflect.TypeOf(valuePtr)
 		if configValuePtrType != valuePtrType {
-			return fmt.Errorf("pointer to parameter %q has type %s, passed %T", name, configValuePtrType.String(), valuePtr)
+			return fmt.Errorf("pointer to parameter %q has type %s, passed %s",
+				name,
+				configValuePtrType.String(),
+				valuePtrType.String())
 		} else {
 			reflect.ValueOf(valuePtr).Elem().Set(reflect.ValueOf(configValue))
 			return nil

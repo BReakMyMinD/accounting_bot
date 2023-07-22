@@ -1,9 +1,10 @@
 package main
 
-import( "config" 
-		"tgbot"
-	  	"log"
-		"os" //todo log in file, not stdout
+import (
+	"config"
+	"log"
+	"os" //todo log in file, not stdout
+	"tgbot"
 )
 
 func main() {
@@ -19,32 +20,39 @@ func run() error {
 	infoLog.Println("starting bot...")
 
 	configReader, err := config.NewConfigReader("../config.json") //for debug, by default "config.json"
-	if err != nil{
+	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
 
 	var token string
-	var timeout float64
+	var httpTimeout, sessionTimeout float64
 
 	err = configReader.GetParameter("bot_token", &token)
 	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
-	err = configReader.GetParameter("long_polling_timeout", &timeout) //json number interprets as float64!
+	err = configReader.GetParameter("long_polling_timeout", &httpTimeout) //json number interprets as float64!
 	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
-	bot, err := tgbot.NewBot(token, int(timeout))
+	err = configReader.GetParameter("session_timeout", &sessionTimeout)
 	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
-	go bot.StartGettingUpdates(errorLog)
-	for update := range bot.UpdatesChan {
-		infoLog.Println(update.UpdateID)
+	bot, err := tgbot.NewBot(token, httpTimeout, sessionTimeout)
+	if err != nil {
+		errorLog.Println(err)
+		return err
 	}
+
+	go bot.StartGettingUpdates()
+	for err := range bot.ErrorChan {
+		errorLog.Println(err)
+	}
+	infoLog.Println("bot terminated")
 	return nil
 }
