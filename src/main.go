@@ -43,12 +43,11 @@ func run() error {
 		errorLog.Println(err)
 		return err
 	}
-	bot, err := tgbot.NewBot(token, httpTimeout, sessionTimeout)
+	bot, err := tgbot.NewBot(token, httpTimeout, sessionTimeout, InitialState{"/quit"})
 	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
-
 	go bot.StartGettingUpdates()
 	for err := range bot.ErrorChan {
 		errorLog.Println(err)

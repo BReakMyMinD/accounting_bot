@@ -10,28 +10,28 @@ import (
 	"time"
 )
 
-const apiMethodTemplate string = "https://api.telegram.org/bot<TOKEN>/<METHOD>"
-const apiFileTemplate string = "https://api.telegram.org/file/bot<TOKEN>/<PATH>"
-const updatesLimit int = 100
-const errorLimit int = 1
-
-type tgbot struct {
+type Tgbot struct {
 	token          string
 	updatesOffset  int
 	httpTimeout    int     //seconds
 	sessionTimeout float64 //seconds
 	active         bool
+	initialState   State
 	sessions       map[int64]*userSession
 	ErrorChan      chan error
 }
 
-func NewBot(token string, httpTimeout float64, sessionTimeout float64) (*tgbot, error) {
-	bot := tgbot{
+func NewBot(token string, httpTimeout float64, sessionTimeout float64, initialState State) (*Tgbot, error) {
+	if initialState == nil {
+		return nil, fmt.Errorf("initial step is not set")
+	}
+	bot := Tgbot{
 		token,
 		0,
 		int(httpTimeout),
 		sessionTimeout,
 		true,
+		nil,
 		make(map[int64]*userSession),
 		make(chan error, errorLimit),
 	}
@@ -45,7 +45,7 @@ func NewBot(token string, httpTimeout float64, sessionTimeout float64) (*tgbot, 
 	return &bot, nil
 }
 
-func (bot *tgbot) StartGettingUpdates() {
+func (bot *Tgbot) StartGettingUpdates() {
 	for {
 		if !bot.active {
 			//if we stop the bot, we must ensure that all session handlers had finished
@@ -99,56 +99,58 @@ func (bot *tgbot) StartGettingUpdates() {
 	}
 }
 
-func (bot *tgbot) mapSession(update Update) error {
+func (bot *Tgbot) mapSession(update Update) error {
 	var sessionId int64
 	switch {
-	case update.Message.Sender.ID != 0:
+	case update.Message.Sender.ID != 0 || update.Message != nil:
 		sessionId = update.Message.Sender.ID
-	case update.CallbackQuery.Sender.ID != 0:
+	case update.CallbackQuery.Sender.ID != 0 || update.Message != nil:
 		sessionId = update.CallbackQuery.Sender.ID
-	}
-	if sessionId == 0 {
+	default:
 		return fmt.Errorf("unable to recognize sender of update %d", update.UpdateID)
 	}
 	if session, ok := bot.sessions[sessionId]; ok {
-		session.UpdatesChan <- update
-		session.LastUpdate = time.Now()
+		session.updatesChan <- update
+		session.lastUpdate = time.Now()
 	} else {
-		session = NewUserSession(updatesLimit, bot.sessionTimeout)
-		session.UpdatesChan <- update
+		session = newUserSession(bot.sessionTimeout)
+		session.updatesChan <- update
 		bot.sessions[sessionId] = session
 		go func() {
-			bot.handleSession(session)
-			session.CloseChan <- true
+			for update := range session.updatesChan {
+				var err error
+				if validationErr := session.state.ValidateInput(update); validationErr != nil {
+					err = bot.AskForRetry(validationErr)
+				} else {
+					session.state, err = session.state.Action(bot, update)
+				}
+				if err != nil {
+					bot.ErrorChan <- err
+					session.state = bot.initialState
+					continue
+				}
+			}
+			session.closeChan <- true
 		}()
 	}
 	return nil
 }
 
-func (bot *tgbot) handleSession(session *userSession) {
-	for update := range session.UpdatesChan {
-		err := session.handleUpdate(update)
-		if err != nil {
-			bot.ErrorChan <- err
-		}
-	}
-}
-
-func (bot *tgbot) closeSession(sessionId int64) {
+func (bot *Tgbot) closeSession(sessionId int64) {
 	if session, ok := bot.sessions[sessionId]; ok {
-		close(session.UpdatesChan)
-		if <-session.CloseChan {
+		close(session.updatesChan)
+		if <-session.closeChan {
 			//wait for session goroutine has finished
 			delete(bot.sessions, sessionId)
 		}
 	}
 }
 
-func (bot *tgbot) StopGettingUpdates() {
+func (bot *Tgbot) StopGettingUpdates() {
 	bot.active = false
 }
 
-func (bot *tgbot) makeApiRequest(url string, httpMethod string, contentType string, body []byte) (*ApiResponse, error) {
+func (bot *Tgbot) makeApiRequest(url string, httpMethod string, contentType string, body []byte) (*ApiResponse, error) {
 	request, err := http.NewRequest(httpMethod, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -177,7 +179,7 @@ func (bot *tgbot) makeApiRequest(url string, httpMethod string, contentType stri
 	return &apiResponse, nil
 }
 
-func (bot *tgbot) prepareApiUrl(apiMethod string, filePath string) string {
+func (bot *Tgbot) prepareApiUrl(apiMethod string, filePath string) string {
 	var url string
 	if apiMethod != "" {
 		url = strings.Replace(apiMethodTemplate, "<METHOD>", apiMethod, 1)
@@ -186,4 +188,9 @@ func (bot *tgbot) prepareApiUrl(apiMethod string, filePath string) string {
 	}
 	url = strings.Replace(url, "<TOKEN>", bot.token, 1)
 	return url
+}
+
+func (bot *Tgbot) AskForRetry(validationError error) error {
+	//do generic invalid input response
+	return nil
 }

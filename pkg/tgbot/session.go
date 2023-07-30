@@ -4,33 +4,37 @@ import (
 	"time"
 )
 
+type State interface {
+	Action(bot *Tgbot, update Update) (State, error)
+	ValidateInput(update Update) error
+}
+
 type userSession struct {
-	CreatedAt   time.Time
-	LastUpdate  time.Time
-	Timeout     float64
-	UpdatesChan chan Update
-	CloseChan   chan bool
-}
-
-func NewUserSession(updatesBufSize int, timeout float64) *userSession {
-	shn := userSession{
-		time.Now(),
-		time.Now(),
-		timeout,
-		make(chan Update, updatesBufSize),
-		make(chan bool),
-	}
-	return &shn
-}
-
-func (session *userSession) handleUpdate(update Update) error {
-	//todo
-	return nil
+	createdAt   time.Time
+	lastUpdate  time.Time
+	timeout     float64
+	updatesChan chan Update
+	closeChan   chan bool
+	state       State
+	dataBuffer  interface{}
 }
 
 func (session *userSession) timeoutExceeded() bool {
-	if time.Now().Sub(session.LastUpdate).Seconds() >= session.Timeout {
+	if time.Now().Sub(session.lastUpdate).Seconds() > session.timeout {
 		return true
 	}
 	return false
+}
+
+func newUserSession(timeout float64) *userSession {
+	session := userSession{
+		time.Now(),
+		time.Now(),
+		timeout,
+		make(chan Update, updatesLimit),
+		make(chan bool),
+		nil,
+		nil,
+	}
+	return &session
 }
