@@ -43,13 +43,13 @@ func run() error {
 		errorLog.Println(err)
 		return err
 	}
-	bot, err := tgbot.NewBot(token, httpTimeout, sessionTimeout, InitialState{"/quit"})
+	bot, err := tgbot.NewBot(token, httpTimeout, sessionTimeout, InitialState{})
 	if err != nil {
 		errorLog.Println(err)
 		return err
 	}
 	go bot.StartGettingUpdates()
-	for err := range bot.ErrorChan {
+	for err := range bot.GetErrorChan() {
 		errorLog.Println(err)
 	}
 	infoLog.Println("bot terminated")

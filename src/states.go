@@ -1,39 +1,52 @@
 package main
 
 import (
-	"fmt"
 	"tgbot"
-	"unicode/utf16"
 )
 
-type InitialState struct {
-	ResetStateCommand string
-}
+const quitCommand string = "/quit"
 
-func (state InitialState) ValidateInput(update tgbot.Update) error {
+type InitialState struct{}
+
+func (state InitialState) BeforeInput(bot *tgbot.Tgbot, dataBuffer interface{}, update tgbot.Update) error {
 	return nil
 }
 
-func (state InitialState) Action(bot *tgbot.Tgbot, update tgbot.Update) (tgbot.State, error) {
+func (state InitialState) AfterInput(bot *tgbot.Tgbot, dataBuffer interface{}, update tgbot.Update) (tgbot.State, error) {
 	//define command
-	var command string
 	var nextState tgbot.State
-	for _, entity := range update.Message.Entities {
-		if entity.Type == tgbot.CommandEntity {
-			msgText16 := utf16.Encode([]rune(update.Message.Text))
-			substrTo := entity.Offset + entity.Length
-			if substrTo > len(msgText16) {
-				return nil, fmt.Errorf("user %d bad update: text too short", update.Message.Sender.ID)
-			}
-			command16 := msgText16[entity.Offset:substrTo]
-			command = string(utf16.Decode(command16))
-		}
-	}
+	//var err error
+	command, err := tgbot.ParseCommand(*(update.Message))
 	switch command {
 	case "/start": //maybe without slash
 		//do something
 	case "/quit":
-		nextState = state
+		nextState = InitialState{}
+	case "/new":
+		nextState = NewPayState{}
+	default:
+		nextState = InitialState{}
 	}
-	return nextState, nil
+	return nextState, err
+}
+
+type NewPayState struct{}
+
+func (state NewPayState) BeforeInput(bot *tgbot.Tgbot, dataBuffer interface{}, update tgbot.Update) error {
+	//inform user about input format
+	return nil
+}
+
+func (state NewPayState) AfterInput(bot *tgbot.Tgbot, dataBuffer interface{}, update tgbot.Update) (tgbot.State, error) {
+	var err error
+	if command, _ := tgbot.ParseCommand(*(update.Message)); command != "" {
+		nextState, err := InitialState{}.AfterInput(bot, dataBuffer, update)
+		return nextState, err
+	}
+	if true { //if input is fully validated
+		//do some shit
+		//return some_new_state nil
+	}
+	//err = bot.SendMessage("bullshit input")
+	return nil, err
 }

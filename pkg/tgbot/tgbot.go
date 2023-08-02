@@ -18,7 +18,7 @@ type Tgbot struct {
 	active         bool
 	initialState   State
 	sessions       map[int64]*userSession
-	ErrorChan      chan error
+	errorChan      chan error
 }
 
 func NewBot(token string, httpTimeout float64, sessionTimeout float64, initialState State) (*Tgbot, error) {
@@ -52,7 +52,7 @@ func (bot *Tgbot) StartGettingUpdates() {
 			for sessionId := range bot.sessions {
 				bot.closeSession(sessionId)
 			}
-			close(bot.ErrorChan)
+			close(bot.errorChan)
 			break
 		}
 		requestBody := RequestUpdates{
@@ -63,7 +63,7 @@ func (bot *Tgbot) StartGettingUpdates() {
 		}
 		requestBodyJson, err := json.Marshal(requestBody)
 		if err != nil {
-			bot.ErrorChan <- err
+			bot.errorChan <- err
 			continue
 		}
 		apiResponse, err := bot.makeApiRequest(bot.prepareApiUrl("getUpdates", ""),
@@ -71,14 +71,14 @@ func (bot *Tgbot) StartGettingUpdates() {
 			"application/json",
 			requestBodyJson)
 		if err != nil {
-			bot.ErrorChan <- err
+			bot.errorChan <- err
 			time.Sleep(time.Second * 3)
 			continue
 		}
 		var updates []Update
 		err = json.Unmarshal(apiResponse.Result, &updates)
 		if err != nil {
-			bot.ErrorChan <- err
+			bot.errorChan <- err
 			continue
 		}
 		for _, update := range updates {
@@ -86,7 +86,7 @@ func (bot *Tgbot) StartGettingUpdates() {
 				bot.updatesOffset = update.UpdateID + 1
 				err = bot.mapSession(update)
 				if err != nil {
-					bot.ErrorChan <- err
+					bot.errorChan <- err
 				}
 			}
 		}
@@ -102,9 +102,9 @@ func (bot *Tgbot) StartGettingUpdates() {
 func (bot *Tgbot) mapSession(update Update) error {
 	var sessionId int64
 	switch {
-	case update.Message.Sender.ID != 0 || update.Message != nil:
+	case update.Message.Sender.ID != 0 && update.Message != nil:
 		sessionId = update.Message.Sender.ID
-	case update.CallbackQuery.Sender.ID != 0 || update.Message != nil:
+	case update.CallbackQuery.Sender.ID != 0 && update.CallbackQuery != nil:
 		sessionId = update.CallbackQuery.Sender.ID
 	default:
 		return fmt.Errorf("unable to recognize sender of update %d", update.UpdateID)
@@ -119,15 +119,17 @@ func (bot *Tgbot) mapSession(update Update) error {
 		go func() {
 			for update := range session.updatesChan {
 				var err error
-				if validationErr := session.state.ValidateInput(update); validationErr != nil {
-					err = bot.AskForRetry(validationErr)
-				} else {
-					session.state, err = session.state.Action(bot, update)
+				var nextState State
+
+				if nextState, err = session.state.AfterInput(bot, session.dataBuffer, update); err == nil && nextState != nil {
+					session.state = nextState
+					err = session.state.BeforeInput(bot, session.dataBuffer, update)
 				}
+
 				if err != nil {
-					bot.ErrorChan <- err
+					bot.errorChan <- err
 					session.state = bot.initialState
-					continue
+					session.dataBuffer = nil
 				}
 			}
 			session.closeChan <- true
@@ -190,7 +192,11 @@ func (bot *Tgbot) prepareApiUrl(apiMethod string, filePath string) string {
 	return url
 }
 
-func (bot *Tgbot) AskForRetry(validationError error) error {
+func (bot *Tgbot) SendMessage(message Message) error {
 	//do generic invalid input response
 	return nil
+}
+
+func (bot *Tgbot) GetErrorChan() <-chan error {
+	return bot.errorChan
 }

@@ -5,8 +5,8 @@ import (
 )
 
 type State interface {
-	Action(bot *Tgbot, update Update) (State, error)
-	ValidateInput(update Update) error
+	AfterInput(bot *Tgbot, dataBuffer interface{}, update Update) (State, error)
+	BeforeInput(bot *Tgbot, dataBuffer interface{}, update Update) error
 }
 
 type userSession struct {
